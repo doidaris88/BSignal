@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto Signal Cumulative PWA</title>
+    <title>Crypto Signal Ultimate PWA</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -13,7 +13,10 @@
     <header class="max-w-md mx-auto mb-4 flex justify-between items-center bg-slate-800/50 p-3 rounded-2xl border border-slate-700/40">
         <div>
             <h1 class="text-xl font-black text-amber-400 tracking-wide"> BETA-SIGNAL LIVE</h1>
-            <p class="text-[10px] text-slate-400 mt-0.5">Kumulatif Indikator & Vol Surge 2x</p>
+            <div class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                <span>Kurs Live:</span>
+                <span id="live-rate" class="text-emerald-400 font-mono">Fetching...</span>
+            </div>
         </div>
         <div class="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-700">
             <button id="btn-usd" onclick="setCurrency('USD')" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 transition-all">USD</button>
@@ -34,11 +37,27 @@
         ];
 
         let currentCurrency = 'USD';
-        const USD_TO_IDR = 16200; // Kurs estimasi basis data perdagangan crypto
+        let usdToIdrRate = 16300; 
 
-        // Penyimpanan data historis singkat untuk kalkulasi indikator di sisi client
-        const historicalData = {};
-        cryptos.forEach(c => { historicalData[c.symbol] = []; });
+        const marketStats = {};
+        cryptos.forEach(c => { marketStats[c.symbol] = { price: 0, high: 0, low: 0, vol: 0, prevVol: 0 }; });
+
+        // Ambil Kurs Real-Time USDT-IDR dari Bursa Global
+        async function fetchRealtimeRate() {
+            try {
+                const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTIDR');
+                const data = await response.json();
+                if (data && data.price) {
+                    usdToIdrRate = parseFloat(data.price);
+                    document.getElementById('live-rate').innerText = 'Rp ' + usdToIdrRate.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+                }
+            } catch (e) {
+                console.log("Gagal memuat kurs live, menggunakan kurs internal:", e);
+            }
+        }
+        
+        fetchRealtimeRate();
+        setInterval(fetchRealtimeRate, 300000); // Perbarui kurs setiap 5 menit
 
         function setCurrency(currency) {
             currentCurrency = currency;
@@ -56,7 +75,7 @@
         function formatValue(val, isPrice = true) {
             if (!isPrice) return val.toFixed(2);
             if (currentCurrency === 'IDR') {
-                const idrVal = val * USD_TO_IDR;
+                const idrVal = val * usdToIdrRate;
                 return 'Rp ' + idrVal.toLocaleString('id-ID', { maximumFractionDigits: 0 });
             }
             return '$' + val.toLocaleString('en-US', { minimumFractionDigits: val < 1 ? 4 : 2, maximumFractionDigits: val < 1 ? 4 : 2 });
@@ -66,19 +85,18 @@
         const dashboard = document.getElementById('dashboard');
         cryptos.forEach(coin => {
             dashboard.innerHTML += `
-                <div id="card-${coin.id}" class="bg-slate-800 rounded-2xl p-4 border border-slate-700/50 shadow-xl transition-all duration-300">
+                <div id="card-${coin.id}" class="bg-slate-800 rounded-2xl p-4 border border-slate-700/50 shadow-xl transition-all duration-150">
                     <div class="flex justify-between items-center mb-3">
                         <div>
                             <h2 class="text-base font-bold">${coin.name} <span class="text-xs text-slate-500">${coin.symbol.replace('USDT','')}</span></h2>
                             <div class="text-lg font-mono font-black text-slate-300 mt-0.5" id="price-${coin.id}">$0.00</div>
                         </div>
                         <div class="text-right">
-                            <div id="badge-${coin.id}" class="px-2.5 py-1 rounded-xl font-black text-xs bg-slate-700 text-slate-400">ANALYZING</div>
-                            <div id="score-${coin.id}" class="text-[10px] text-slate-500 font-mono mt-1">Skor: 0/0</div>
+                            <div id="badge-${coin.id}" class="px-2.5 py-1 rounded-xl font-black text-xs bg-slate-700 text-slate-400">CONNECTING</div>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-700/30 font-mono text-center mb-2">
+                    <div class="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-700/30 font-mono text-center mb-1">
                         <div>
                             <div class="text-[9px] text-slate-500 font-sans uppercase">Entry</div>
                             <div class="text-xs font-bold text-amber-400 mt-0.5" id="entry-${coin.id}">-</div>
@@ -92,153 +110,97 @@
                             <div class="text-xs font-bold text-emerald-400 mt-0.5" id="tp-${coin.id}">-</div>
                         </div>
                     </div>
-                    <div id="indicators-preview-${coin.id}" class="text-[10px] text-slate-400 grid grid-cols-2 gap-x-2 gap-y-0.5 border-t border-slate-700/30 pt-1.5 font-mono"></div>
                 </div>
             `;
         });
 
-        // Koneksi Stream via WebSocket
-        const streams = cryptos.map(c => `${c.symbol.toLowerCase()}@kline_1m`).join('/');
+        // Jalur Pipa Jalur Kilat Gabungan Mini-Ticker
+        const streams = cryptos.map(c => `${c.symbol.toLowerCase()}@miniTicker`).join('/');
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
 
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
-            const k = msg.k;
             const symbol = msg.s;
             const coin = cryptos.find(c => c.symbol === symbol);
             if (!coin) return;
 
-            const closePrice = parseFloat(k.c);
-            const volume = parseFloat(k.v);
+            const closePrice = parseFloat(msg.c);
+            const highPrice = parseFloat(msg.h);
+            const lowPrice = parseFloat(msg.l);
+            const volume = parseFloat(msg.v);
 
-            // Update display harga realtime utama
+            const stats = marketStats[symbol];
+            stats.prevVol = stats.vol > 0 ? stats.vol : volume;
+            stats.price = closePrice;
+            stats.high = highPrice;
+            stats.low = lowPrice;
+            stats.vol = volume;
+
             document.getElementById(`price-${coin.id}`).innerText = formatValue(closePrice);
 
-            // Simpan lilin data jika candle terkonfirmasi close atau perbarui candle berjalan
-            let history = historicalData[symbol];
-            const currentCandle = { close: closePrice, high: parseFloat(k.h), low: parseFloat(k.l), open: parseFloat(k.o), volume: volume };
-            
-            if (k.x) { // Candle Terbentuk Sempurna (Mendekati 1 Menit)
-                history.push(currentCandle);
-                if (history.length > 50) history.shift();
+            // --- EKSEKUSI LOGIKA SINYAL KILAT 4 STATUS ---
+            const range = highPrice - lowPrice || closePrice * 0.015;
+            const midPoint = (highPrice + lowPrice) / 2;
+
+            // Toleransi zona netral/sideways di sekitar garis midpoint (10% dari total range harian)
+            const neutralZoneUpper = midPoint + (range * 0.05);
+            const neutralZoneLower = midPoint - (range * 0.05);
+
+            const isVolSurge = volume > (stats.prevVol * 1.05); 
+
+            let finalAction = "HOLD / NEUTRAL";
+            let entry = closePrice;
+            let sl = 0;
+            let tp = 0;
+
+            if (closePrice > neutralZoneUpper) {
+                // Zona Atas: BUY / STRONG BUY
+                if (isVolSurge && closePrice > (highPrice - (range * 0.15))) {
+                    finalAction = "STRONG BUY";
+                } else {
+                    finalAction = "BUY";
+                }
+                sl = entry - (range * 0.2); 
+                tp = entry + (range * 0.4); // RR 1:2
+            } else if (closePrice < neutralZoneLower) {
+                // Zona Bawah: SELL
+                finalAction = "SELL";
+                sl = entry + (range * 0.2); // Jaring pengaman atas untuk posisi short/sell
+                tp = entry - (range * 0.4);
             } else {
-                // Gunakan temporary array untuk kalkulasi data berjalan secara live
-                history = [...history, currentCandle];
+                // Tepat di tengah: HOLD / NEUTRAL
+                finalAction = "HOLD / NEUTRAL";
+                sl = entry - (range * 0.2);
+                tp = entry + (range * 0.4);
             }
 
-            if (history.length < 5) return; // Butuh tumpukan data minimal awal
-
-            // --- HITUNG INDIKATOR MANUAL & PENILAIAN KUMULATIF ---
-            let buyScore = 0;
-            let sellScore = 0;
-            let totalIndicatorsUsed = 5;
-
-            const len = history.length;
-            const latest = history[len - 1];
-
-            // 1. Indikator EMA Stack (Arah Tren Jendela Pendek-Menengah)
-            // Pendekatan matematis pembobotan EMA sederhana berbasis baris data terakhir
-            let ema9 = latest.close, ema21 = latest.close, ema50 = latest.close; 
-            if(len >= 9) ema9 = history.slice(-9).reduce((acc, c) => acc + c.close, 0) / 9;
-            if(len >= 21) ema21 = history.slice(-21).reduce((acc, c) => acc + c.close, 0) / 21;
-            if(len >= 50) ema50 = history.slice(-50).reduce((acc, c) => acc + c.close, 0) / 50;
-
-            if (ema9 > ema21 && ema21 > ema50) buyScore++;
-            else if (ema9 < ema21 && ema21 < ema50) sellScore++;
-
-            // 2. Bollinger Bands & VWAP Gabungan (Arah Deviasi Harga)
-            const pricesSlice = history.slice(-20).map(c => c.close);
-            const sma20 = pricesSlice.reduce((a, b) => a + b, 0) / pricesSlice.length;
-            const variance = pricesSlice.reduce((a, b) => a + Math.pow(b - sma20, 2), 0) / pricesSlice.length;
-            const stdDev = Math.sqrt(variance);
-            const bbUpper = sma20 + (2 * stdDev);
-            const bbLower = sma20 - (2 * stdDev);
-
-            // Hitung VWAP Intra-Window Berjalan
-            const vwapNum = history.slice(-20).reduce((acc, c) => acc + (((c.high + c.low + c.close)/3) * c.volume), 0);
-            const vwapDen = history.slice(-20).reduce((acc, c) => acc + c.volume, 0);
-            const vwap = vwapDen > 0 ? (vwapNum / vwapDen) : latest.close;
-
-            if (latest.close < bbLower || latest.close > vwap) buyScore++;
-            if (latest.close > bbUpper || latest.close < vwap) sellScore++;
-
-            // 3. RSI 14 (Osilator kekuatan tekanan beli/jual)
-            let rsi = 50; 
-            const rsiSlice = history.slice(-15);
-            let gains = 0, losses = 0;
-            for(let i=1; i<rsiSlice.length; i++) {
-                const diff = rsiSlice[i].close - rsiSlice[i-1].close;
-                if(diff > 0) gains += diff; else losses += Math.abs(diff);
-            }
-            if(losses > 0) {
-                const rs = gains / losses; rsi = 100 - (100 / (1 + rs));
-            }
-            if (rsi < 35) buyScore++; else if (rsi > 65) sellScore++;
-
-            // 4. Stochastic RSI (20/80 Threshold)
-            let stochK = 50;
-            if (rsi > 0) stochK = (rsi - 30) / (70 - 30) * 100; // Normalisasi batas osilator internal
-            if (stochK < 20) buyScore++; else if (stochK > 80) sellScore++;
-
-            // 5. MACD (12, 26, 9) Lintasan Histogram Tradisional
-            const ema12 = history.slice(-12).reduce((acc, c) => acc + c.close, 0) / history.slice(-12).length;
-            const ema26 = history.slice(-26).reduce((acc, c) => acc + c.close, 0) / history.slice(-26).length;
-            const macdLine = ema12 - ema26;
-            if (macdLine > 0) buyScore++; else sellScore++;
-
-            // 6. Volume Ratio Surge (Penguat Daya > 2x lipat rata-rata jangka pendek)
-            const avgVol = history.slice(-10, -1).reduce((acc, c) => acc + c.volume, 0) / 9;
-            const volRatio = avgVol > 0 ? (latest.volume / avgVol) : 1;
-            const isVolSurge = volRatio >= 2.0;
-
-            // --- KEPUTUSAN KUMULATIF AKHIR ---
-            let finalAction = "NEUTRAL";
-            let rangeVolatility = latest.high - latest.low || latest.close * 0.02;
-
-            if (buyScore >= 3 && buyScore > sellScore) {
-                finalAction = isVolSurge ? "STRONG BUY" : "BUY";
-            } else if (sellScore >= 3 && sellScore > buyScore) {
-                finalAction = isVolSurge ? "STRONG SELL" : "SELL";
-            }
-
-            // Manajemen Target Risiko Berbasis Rentang Poin Volatilitas
-            let entry = latest.close;
-            let sl = finalAction.includes("BUY") ? (entry - (rangeVolatility * 1.5)) : (entry + (rangeVolatility * 1.5));
-            let tp = finalAction.includes("BUY") ? (entry + (rangeVolatility * 3.0)) : (entry - (rangeVolatility * 3.0));
-
-            // --- UPDATE ANTARMUKA KARTU ---
+            // --- TAMPILKAN HASILNYA KE UI DASHBOARD ---
             const badge = document.getElementById(`badge-${coin.id}`);
             const card = document.getElementById(`card-${coin.id}`);
-            const scoreText = document.getElementById(`score-${coin.id}`);
 
-            scoreText.innerText = `B:${buyScore} | S:${sellScore} | Vol:${volRatio.toFixed(1)}x`;
-
-            if (finalAction.includes("BUY")) {
-                badge.className = `px-2.5 py-1 rounded-xl font-black text-xs ${isVolSurge ? 'bg-purple-600 text-white animate-bounce':'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`;
-                badge.innerText = isVolSurge ? " STRONG BUY" : " LIVE BUY";
-                card.className = "bg-slate-800 rounded-2xl p-4 border border-emerald-500/30 shadow-xl shadow-emerald-950/20";
-            } else if (finalAction.includes("SELL")) {
-                badge.className = `px-2.5 py-1 rounded-xl font-black text-xs ${isVolSurge ? 'bg-red-600 text-white animate-bounce':'bg-rose-500/20 text-rose-400 border border-rose-500/30'}`;
-                badge.innerText = isVolSurge ? " STRONG SELL" : " LIVE SELL";
-                card.className = "bg-slate-800 rounded-2xl p-4 border border-rose-500/30 shadow-xl shadow-rose-950/20";
+            if (finalAction === "STRONG BUY") {
+                badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-purple-600 text-white animate-pulse shadow-md shadow-purple-500/20";
+                badge.innerText = " STRONG BUY";
+                card.className = "bg-slate-800 rounded-2xl p-4 border border-purple-500/40 shadow-xl shadow-purple-950/20";
+            } else if (finalAction === "BUY") {
+                badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10";
+                badge.innerText = " BUY";
+                card.className = "bg-slate-800 rounded-2xl p-4 border border-emerald-500/30 shadow-xl shadow-emerald-950/10";
+            } else if (finalAction === "SELL") {
+                badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-rose-600 text-white shadow-md shadow-rose-500/10";
+                badge.innerText = " SELL";
+                card.className = "bg-slate-800 rounded-2xl p-4 border border-rose-500/40 shadow-xl shadow-rose-950/10";
             } else {
-                badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-slate-700 text-slate-400";
-                badge.innerText = " NEUTRAL";
+                // Kondisi HOLD / NEUTRAL
+                badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-slate-700 text-slate-400 border border-slate-600/30";
+                badge.innerText = " HOLD / NEUTRAL";
                 card.className = "bg-slate-800 rounded-2xl p-4 border border-slate-700/50 shadow-xl";
             }
 
-            // Render Nilai Kalkulasi Targets harian
+            // Render Nilai Komponen Manajemen Risiko ke Layar
             document.getElementById(`entry-${coin.id}`).innerText = formatValue(entry);
             document.getElementById(`sl-${coin.id}`).innerText = formatValue(sl);
             document.getElementById(`tp-${coin.id}`).innerText = formatValue(tp);
-
-            // Sub-cetak nilai indikator mentah untuk transparansi trader harian
-            document.getElementById(`indicators-preview-${coin.id}`).innerHTML = `
-                <div>RSI: ${rsi.toFixed(1)} (${stochK > 80 ? 'OB': stochK < 20 ? 'OS':'N'})</div>
-                <div>VWAP: ${latest.close > vwap ? 'ABOVE':'BELOW'}</div>
-                <div>EMA: ${ema9 > ema21 ? 'BULLISH':'BEARISH'}</div>
-                <div>MACD: ${macdLine > 0 ? '':''}</div>
-            `;
         };
 
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
