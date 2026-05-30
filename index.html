@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Signal PWA</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-4">
+
+    <header class="max-w-md mx-auto mb-6 text-center">
+        <h1 class="text-2xl font-black text-amber-400 tracking-wide">⚡ BETA-SIGNAL LIVE</h1>
+        <p class="text-xs text-slate-400 mt-1">Real-time via Binance WebSocket (Auto-Calculate)</p>
+    </header>
+
+    <main id="dashboard" class="max-w-md mx-auto space-y-4">
+        </main>
+
+    <script>
+        // Daftar Koin High-Beta yang dipantau
+        const cryptos = [
+            { id: 'sol', symbol: 'SOLUSDT', name: 'Solana' },
+            { id: 'near', symbol: 'NEARUSDT', name: 'Near' },
+            { id: 'avax', symbol: 'AVAXUSDT', name: 'Avalanche' },
+            { id: 'doge', symbol: 'DOGEUSDT', name: 'Dogecoin' },
+            { id: 'inj', symbol: 'INJUSDT', name: 'Injective' }
+        ];
+
+        const dashboard = document.getElementById('dashboard');
+
+        // 1. Render Struktur Kartu Kosong Pertama Kali
+        cryptos.forEach(coin => {
+            dashboard.innerHTML += `
+                <div id="card-${coin.id}" class="bg-slate-800 rounded-2xl p-4 border border-slate-700/50 shadow-xl transition-all duration-300">
+                    <div class="flex justify-between items-center mb-3">
+                        <div>
+                            <h2 class="text-lg font-bold">${coin.name} <span class="text-xs text-slate-500">${coin.symbol.replace('USDT','')}</span></h2>
+                            <div class="text-xl font-mono font-black text-slate-300 mt-0.5" id="price-${coin.id}">$0.00</div>
+                        </div>
+                        <div id="badge-${coin.id}" class="px-3 py-1.5 rounded-xl font-black text-sm bg-slate-700 text-slate-400">LOADING</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-700/30 font-mono text-center">
+                        <div>
+                            <div class="text-[10px] text-slate-500 font-sans uppercase">Entry Price</div>
+                            <div class="text-sm font-bold text-amber-400 mt-0.5" id="entry-${coin.id}">-</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-slate-500 font-sans uppercase text-rose-400">Stop Loss</div>
+                            <div class="text-sm font-bold text-rose-500 mt-0.5" id="sl-${coin.id}">-</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-slate-500 font-sans uppercase text-emerald-400">Target (TP)</div>
+                            <div class="text-sm font-bold text-emerald-400 mt-0.5" id="tp-${coin.id}">-</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        // 2. Koneksi ke Binance WebSocket Tanpa API Key
+        // Menggunakan stream mini-ticker gabungan untuk efisiensi data data harian
+        const streams = cryptos.map(c => `${c.symbol.toLowerCase()}@miniTicker`).join('/');
+        const wsUrl = `wss://stream.binance.com:9443/ws/${streams}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const symbol = data.s;
+            const currentPrice = parseFloat(data.c);
+            const highPrice = parseFloat(data.h);
+            const lowPrice = parseFloat(data.l);
+
+            const coin = cryptos.find(c => c.symbol === symbol);
+            if (!coin) return;
+
+            // Update harga live di layar
+            document.getElementById(`price-${coin.id}`).innerText = `$${currentPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
+
+            // 3. Algoritma Otomatisasi Penentu Sinyal & Manajemen Risiko (Entry, SL, TP)
+            // Menggunakan pivot sederhana dari rentang High/Low harian berjalan sebagai acuan volatilitas
+            const range = highPrice - lowPrice;
+            const midPoint = (highPrice + lowPrice) / 2;
+
+            let signal = "NEUTRAL";
+            let entry = currentPrice;
+            let sl = 0;
+            let tp = 0;
+
+            if (currentPrice > midPoint) {
+                // Tren jangka pendek Bullish (Kondisi Buy)
+                signal = "BUY";
+                sl = currentPrice - (range * 0.15); // Stop Loss ditaruh 15% dari jarak range di bawah entry
+                tp = currentPrice + (range * 0.30); // Risk-to-Reward Ratio 1:2
+            } else if (currentPrice < midPoint) {
+                // Tren jangka pendek Bearish (Kondisi Sell/Short)
+                signal = "SELL";
+                sl = currentPrice + (range * 0.15);
+                tp = currentPrice - (range * 0.30);
+            }
+
+            // 4. Update Tampilan DOM secara Real-Time
+            const badge = document.getElementById(`badge-${coin.id}`);
+            const card = document.getElementById(`card-${coin.id}`);
+            
+            if (signal === "BUY") {
+                badge.className = "px-3 py-1.5 rounded-xl font-black text-sm bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 anim-pulse";
+                badge.innerText = "🔴 LIVE BUY";
+                card.className = "bg-slate-800 rounded-2xl p-4 border border-emerald-500/20 shadow-xl shadow-emerald-950/20";
+            } else if (signal === "SELL") {
+                badge.className = "px-3 py-1.5 rounded-xl font-black text-sm bg-rose-500/20 text-rose-400 border border-rose-500/30";
+                badge.innerText = "🔵 LIVE SELL";
+                card.className = "bg-slate-800 rounded-2xl p-4 border border-rose-500/20 shadow-xl shadow-rose-950/20";
+            }
+
+            // Tampilkan Data Numerik SL, TP, dan Entry
+            const precision = currentPrice > 1 ? 2 : 4;
+            document.getElementById(`entry-${coin.id}`).innerText = `$${entry.toFixed(precision)}`;
+            document.getElementById(`sl-${coin.id}`).innerText = `$${sl.toFixed(precision)}`;
+            document.getElementById(`tp-${coin.id}`).innerText = `$${tp.toFixed(precision)}`;
+        };
+
+        // 5. Registrasi Service Worker PWA agar bisa diinstall di HP
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>

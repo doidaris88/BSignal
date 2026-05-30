@@ -1,0 +1,17 @@
+{
+  "name": "Crypto Signal Live Dashboard",
+  "short_name": "CryptoSignal",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme-color": "#0f172a",
+  "description": "Realtime Crypto Buy Sell Signal dengan Entry, SL dan TP",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2592/2592317.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
