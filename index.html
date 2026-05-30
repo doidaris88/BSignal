@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto Signal Ultimate PWA</title>
+    <title>Crypto Signal Fibo PWA</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -12,7 +12,7 @@
 
     <header class="max-w-md mx-auto mb-4 flex justify-between items-center bg-slate-800/50 p-3 rounded-2xl border border-slate-700/40">
         <div>
-            <h1 class="text-xl font-black text-amber-400 tracking-wide"> BETA-SIGNAL LIVE</h1>
+            <h1 class="text-xl font-black text-amber-400 tracking-wide">⚡ BETA-SIGNAL LIVE</h1>
             <div class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
                 <span>Kurs Live:</span>
                 <span id="live-rate" class="text-emerald-400 font-mono">Fetching...</span>
@@ -28,6 +28,7 @@
         </main>
 
     <script>
+        // Memantau 5 aset High-Beta & Liquid teratas termasuk INJ
         const cryptos = [
             { id: 'sol', symbol: 'SOLUSDT', name: 'Solana' },
             { id: 'near', symbol: 'NEARUSDT', name: 'Near' },
@@ -42,7 +43,7 @@
         const marketStats = {};
         cryptos.forEach(c => { marketStats[c.symbol] = { price: 0, high: 0, low: 0, vol: 0, prevVol: 0 }; });
 
-        // Ambil Kurs Real-Time USDT-IDR dari Bursa Global
+        // Ambil Kurs Real-Time dari Pasaran Global Binance (USDTIDR)
         async function fetchRealtimeRate() {
             try {
                 const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTIDR');
@@ -57,7 +58,7 @@
         }
         
         fetchRealtimeRate();
-        setInterval(fetchRealtimeRate, 300000); // Perbarui kurs setiap 5 menit
+        setInterval(fetchRealtimeRate, 300000); // Sinkronisasi otomatis setiap 5 menit
 
         function setCurrency(currency) {
             currentCurrency = currency;
@@ -81,7 +82,7 @@
             return '$' + val.toLocaleString('en-US', { minimumFractionDigits: val < 1 ? 4 : 2, maximumFractionDigits: val < 1 ? 4 : 2 });
         }
 
-        // Render struktur komponen UI dasar Dashboard
+        // Render struktur komponen UI dasar Dashboard PWA
         const dashboard = document.getElementById('dashboard');
         cryptos.forEach(coin => {
             dashboard.innerHTML += `
@@ -96,25 +97,29 @@
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-700/30 font-mono text-center mb-1">
+                    <div class="grid grid-cols-4 gap-1.5 bg-slate-900/60 p-3 rounded-xl border border-slate-700/30 font-mono text-center mb-1">
                         <div>
-                            <div class="text-[9px] text-slate-500 font-sans uppercase">Entry</div>
+                            <div class="text-[8px] text-slate-500 font-sans uppercase font-bold">Entry (Live)</div>
                             <div class="text-xs font-bold text-amber-400 mt-0.5" id="entry-${coin.id}">-</div>
                         </div>
                         <div>
-                            <div class="text-[9px] text-rose-400 font-sans uppercase">Stop Loss</div>
+                            <div class="text-[8px] text-rose-400 font-sans uppercase font-bold">Stop Loss</div>
                             <div class="text-xs font-bold text-rose-500 mt-0.5" id="sl-${coin.id}">-</div>
                         </div>
                         <div>
-                            <div class="text-[9px] text-emerald-400 font-sans uppercase">Target TP</div>
-                            <div class="text-xs font-bold text-emerald-400 mt-0.5" id="tp-${coin.id}">-</div>
+                            <div class="text-[8px] text-emerald-400 font-sans uppercase font-bold">TP 1 (38.2%)</div>
+                            <div class="text-xs font-bold text-emerald-400 mt-0.5" id="tp1-${coin.id}">-</div>
+                        </div>
+                        <div>
+                            <div class="text-[8px] text-cyan-400 font-sans uppercase font-bold">TP 2 (61.8%)</div>
+                            <div class="text-xs font-bold text-cyan-400 mt-0.5" id="tp2-${coin.id}">-</div>
                         </div>
                     </div>
                 </div>
             `;
         });
 
-        // Jalur Pipa Jalur Kilat Gabungan Mini-Ticker
+        // Membuka interaksi pipa kilat data gabungan WebSocket
         const streams = cryptos.map(c => `${c.symbol.toLowerCase()}@miniTicker`).join('/');
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
 
@@ -138,11 +143,11 @@
 
             document.getElementById(`price-${coin.id}`).innerText = formatValue(closePrice);
 
-            // --- EKSEKUSI LOGIKA SINYAL KILAT 4 STATUS ---
+            // --- EKSEKUSI LOGIKA IMPLAN SINYAL DAN INTEGRASI FIBONACCI ---
             const range = highPrice - lowPrice || closePrice * 0.015;
             const midPoint = (highPrice + lowPrice) / 2;
 
-            // Toleransi zona netral/sideways di sekitar garis midpoint (10% dari total range harian)
+            // Batas toleransi area jenuh mendatar (Sideways Zone)
             const neutralZoneUpper = midPoint + (range * 0.05);
             const neutralZoneLower = midPoint - (range * 0.05);
 
@@ -150,57 +155,67 @@
 
             let finalAction = "HOLD / NEUTRAL";
             let entry = closePrice;
-            let sl = 0;
-            let tp = 0;
+            let sl = 0, tp1 = 0, tp2 = 0;
 
             if (closePrice > neutralZoneUpper) {
-                // Zona Atas: BUY / STRONG BUY
+                // Zona Atas (Tren Bullish)
                 if (isVolSurge && closePrice > (highPrice - (range * 0.15))) {
                     finalAction = "STRONG BUY";
                 } else {
                     finalAction = "BUY";
                 }
-                sl = entry - (range * 0.2); 
-                tp = entry + (range * 0.4); // RR 1:2
+                
+                // Rumus Target Profit Berbasis Fibonacci Golden Ratio (Arah Naik)
+                sl = entry - (range * 0.236);       // Stop loss di area support Fibo 23.6% harian
+                tp1 = entry + (range * 0.382);     // TP1 di proyeksi Golden Ratio Fibo 38.2%
+                tp2 = entry + (range * 0.618);     // TP2 di target akselerasi Fibo 61.8%
+                
             } else if (closePrice < neutralZoneLower) {
-                // Zona Bawah: SELL
+                // Zona Bawah (Tren Bearish)
                 finalAction = "SELL";
-                sl = entry + (range * 0.2); // Jaring pengaman atas untuk posisi short/sell
-                tp = entry - (range * 0.4);
+                
+                // Rumus Target Profit Berbasis Fibonacci Golden Ratio (Arah Turun/Short)
+                sl = entry + (range * 0.236); 
+                tp1 = entry - (range * 0.382);
+                tp2 = entry - (range * 0.618);
+                
             } else {
-                // Tepat di tengah: HOLD / NEUTRAL
+                // Zona Tengah (Sideways / Konsolidasi)
                 finalAction = "HOLD / NEUTRAL";
-                sl = entry - (range * 0.2);
-                tp = entry + (range * 0.4);
+                
+                // Pasang kalkulasi seimbang default
+                sl = entry - (range * 0.236);
+                tp1 = entry + (range * 0.382);
+                tp2 = entry + (range * 0.618);
             }
 
-            // --- TAMPILKAN HASILNYA KE UI DASHBOARD ---
+            // --- RE-RENDER TAMPILKAN STATUS PADA LAYAR UTAMA PWA ---
             const badge = document.getElementById(`badge-${coin.id}`);
             const card = document.getElementById(`card-${coin.id}`);
 
             if (finalAction === "STRONG BUY") {
                 badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-purple-600 text-white animate-pulse shadow-md shadow-purple-500/20";
-                badge.innerText = " STRONG BUY";
+                badge.innerText = "⚡ STRONG BUY";
                 card.className = "bg-slate-800 rounded-2xl p-4 border border-purple-500/40 shadow-xl shadow-purple-950/20";
             } else if (finalAction === "BUY") {
                 badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10";
-                badge.innerText = " BUY";
+                badge.innerText = "🟢 BUY";
                 card.className = "bg-slate-800 rounded-2xl p-4 border border-emerald-500/30 shadow-xl shadow-emerald-950/10";
             } else if (finalAction === "SELL") {
                 badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-rose-600 text-white shadow-md shadow-rose-500/10";
-                badge.innerText = " SELL";
+                badge.innerText = "🔴 SELL";
                 card.className = "bg-slate-800 rounded-2xl p-4 border border-rose-500/40 shadow-xl shadow-rose-950/10";
             } else {
-                // Kondisi HOLD / NEUTRAL
                 badge.className = "px-2.5 py-1 rounded-xl font-black text-xs bg-slate-700 text-slate-400 border border-slate-600/30";
-                badge.innerText = " HOLD / NEUTRAL";
+                badge.innerText = "⚪ HOLD / NEUTRAL";
                 card.className = "bg-slate-800 rounded-2xl p-4 border border-slate-700/50 shadow-xl";
             }
 
-            // Render Nilai Komponen Manajemen Risiko ke Layar
+            // Cetak nilai data konversi angka real-time ke layar komponen grid PWA
             document.getElementById(`entry-${coin.id}`).innerText = formatValue(entry);
             document.getElementById(`sl-${coin.id}`).innerText = formatValue(sl);
-            document.getElementById(`tp-${coin.id}`).innerText = formatValue(tp);
+            document.getElementById(`tp1-${coin.id}`).innerText = formatValue(tp1);
+            document.getElementById(`tp2-${coin.id}`).innerText = formatValue(tp2);
         };
 
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
